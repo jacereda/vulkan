@@ -8,6 +8,12 @@ const srcHeader* = """
 ## WARNING: This is a generated file. Do not edit
 ## Any edits will be overwritten by the generator.
 
+{.experimental: "codeReordering".}
+
+type
+  VkHandle* = int64
+  VkNonDispatchableHandle* = int64
+
 var vkGetProc: proc(procName: cstring): pointer {.cdecl.}
 
 when not defined(vkCustomLoader):
@@ -24,13 +30,13 @@ when not defined(vkCustomLoader):
   if isNil(vkHandleDLL):
     quit("could not load: " & vkDLL)
 
-  let vkGetProcAddress = cast[proc(s: cstring): pointer {.stdcall.}](symAddr(vkHandleDLL, "vkGetInstanceProcAddr"))
-  if vkGetProcAddress == nil:
+  let vkGetInstanceProcAddress = cast[proc(inst: VkHandle, s: cstring): pointer {.stdcall.}](symAddr(vkHandleDLL, "vkGetInstanceProcAddr"))
+  if vkGetInstanceProcAddress == nil:
     quit("failed to load `vkGetInstanceProcAddr` from " & vkDLL)
 
   vkGetProc = proc(procName: cstring): pointer {.cdecl.} =
     when defined(windows):
-      result = vkGetProcAddress(procName)
+      result = vkGetInstanceProcAddress(0, procName)
       if result != nil:
         return
     result = symAddr(vkHandleDLL, procName)
@@ -40,21 +46,17 @@ when not defined(vkCustomLoader):
 proc setVKGetProc*(getProc: proc(procName: cstring): pointer {.cdecl.}) =
   vkGetProc = getProc
 
-type
-  VkHandle* = int64
-  VkNonDispatchableHandle* = int64
-  ANativeWindow = ptr object
-  CAMetalLayer = ptr object
-  AHardwareBuffer = ptr object
 """
 
 const vkInit* = """
-proc vkInit*(load1_0: bool = true, load1_1: bool = true): bool =
+proc vkInit*(load1_0: bool = true, load1_1: bool = true, load1_2: bool = true): bool =
   if load1_0:
     vkLoad1_0()
   when not defined(macosx):
     if load1_1:
       vkLoad1_1()
+    if load1_2:
+      vkLoad1_2()
   return true
 """
 

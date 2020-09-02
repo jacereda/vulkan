@@ -52,6 +52,10 @@ proc translateType(s: string): string =
   result = result.replace("ptr char", "cstring")
 
 
+proc translateReturnType(s: string): string =
+  if s == "void": return s
+  result = translateType s
+
 iterator typeItems(node: XmlNode): XmlNode =
   for types in node.findAll("types"):
     for t in types.items:
@@ -343,7 +347,7 @@ proc genEnums(node: XmlNode, output: var string) =
 
       if elements.hasKey(enumValue):
         continue
-      elements.add(enumValue, enumName)
+      elements[enumValue] = enumName
 
     if elements.len == 0:
       continue
@@ -369,7 +373,7 @@ proc genProcs(node: XmlNode, output: var string) =
       vkProc.rVal = vkProc.rVal[0 ..< vkProc.rval.len - vkProc.name.len]
       while vkProc.rVal.endsWith(" "):
         vkProc.rVal = vkProc.rVal[0 ..< vkProc.rVal.len - 1]
-      vkProc.rVal = vkProc.rVal.translateType()
+      vkProc.rVal = vkProc.rVal.translateReturnType()
 
       if vkProc.name == "vkGetTransformFeedbacki_v":
         continue
@@ -423,10 +427,28 @@ proc genFeatures(node: XmlNode, output: var string) =
             output.add("{arg.name}: {arg.argType}".fmt)
           output.add("): {vkProc.rVal} {{.stdcall.}}](vkGetProc(\"{vkProc.name}\"))\n".fmt)
 
+proc genExtensionsConstants(node: XmlNode, output: var string) =
+  echo "Generating and Adding Extensions Constants..."
+  output.add("\n#Extensions constants\nconst\n")
+  var constants = initOrderedTable[string, string]()
+  for extensions in node.findAll("extensions"):
+    for extension in extensions.findAll("extension"):
+      let name = extension.attr("name")
+      for require in extension.findAll("require"):
+        for e in require.findAll("enum"):
+          let name = e.attr("name")
+          let value = e.attr("value")
+          if value != "":
+            constants[name] = value
+  for name,value in constants.pairs:
+   output.add("  {name}* = {value}\n".fmt)
+
 proc genExtensions(node: XmlNode, output: var string) =
   echo "Generating and Adding Extensions..."
   for extensions in node.findAll("extensions"):
     for extension in extensions.findAll("extension"):
+      let name = extension.attr("name")
+      output.add("\n# Load {name}\n".fmt)
 
       var commands: seq[VkProc]
       for require in extension.findAll("require"):
@@ -438,8 +460,6 @@ proc genExtensions(node: XmlNode, output: var string) =
       if commands.len == 0:
         continue
 
-      let name = extension.attr("name")
-      output.add("\n# Load {name}\n".fmt)
       output.add("proc load{name}*() =\n".fmt)
 
       for vkProc in commands:
@@ -500,6 +520,7 @@ proc main() =
   xml.genConstructors(output)
   xml.genProcs(output)
   xml.genFeatures(output)
+  xml.genExtensionsConstants(output)
   xml.genExtensions(output)
 
   output.add("\n" & vkInit)
